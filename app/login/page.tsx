@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
+import { loginWithAuthService } from '../../lib/authApi';
+import { setJwtTokens, setAuthCookie } from '../../lib/auth';
 
 function LoginForm() {
   const router = useRouter();
@@ -20,16 +22,44 @@ function LoginForm() {
     setError('');
 
     console.log('Login attempt - redirectTo:', redirectTo);
-    console.log('All search params:', Object.fromEntries(searchParams.entries()));
 
-    if (username === 'Hello' && password === 'World') {
-      document.cookie = 'auth=true; Path=/; SameSite=Lax; Max-Age=86400';
-      console.log('About to redirect to:', redirectTo);
-      // Force a full navigation to ensure middleware runs with new cookie
+    try {
+      // Try JWT authentication first
+      const authResponse = await loginWithAuthService({ username, password });
+
+      // Set JWT tokens
+      setJwtTokens({
+        accessToken: authResponse.accessToken,
+        refreshToken: authResponse.token
+      });
+
+      console.log('JWT login successful, redirecting to:', redirectTo);
+      // Force a full navigation to ensure middleware runs with new auth
       window.location.assign(redirectTo);
       return;
-    } else {
-      setError('Invalid credentials. Use &quot;Hello&quot; and &quot;World&quot;');
+
+    } catch (error: any) {
+      console.error('AuthService login failed:', error);
+
+      // Check if this is demo credentials
+      if (username === 'Hello' && password === 'World') {
+        // Set demo auth cookie
+        document.cookie = setAuthCookie();
+        console.log('Demo login successful, redirecting to:', redirectTo);
+        window.location.assign(redirectTo);
+        return;
+      }
+
+      // Provide specific error messages based on the error
+      if (error.message.includes('403')) {
+        setError('Invalid username or password. Please check your credentials.');
+      } else if (error.message.includes('404')) {
+        setError('Authentication service is not available. Please try again later.');
+      } else if (error.message.includes('500')) {
+        setError('Server error occurred. Please try again later.');
+      } else {
+        setError('Login failed. Please check your credentials or try demo login (Hello/World).');
+      }
     }
 
     setIsLoading(false);
@@ -51,7 +81,7 @@ function LoginForm() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Hello"
+              placeholder="Enter your username"
               required
             />
           </div>
@@ -66,7 +96,7 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="World"
+              placeholder="Enter your password"
               required
             />
           </div>
@@ -84,8 +114,17 @@ function LoginForm() {
           </button>
         </form>
 
-        <div className="mt-4 text-sm text-gray-600 text-center">
-          Demo credentials: Username: &quot;Hello&quot;, Password: &quot;World&quot;
+        <div className="mt-6 text-sm text-gray-600 text-center">
+          <div className="border-t pt-4">
+            <div className="mb-2">
+              <a href="/signup" className="text-blue-600 hover:text-blue-800">
+                Don&apos;t have an account? Sign up
+              </a>
+            </div>
+            <div className="text-xs text-gray-500">
+              Or try demo access: Username "Hello", Password "World"
+            </div>
+          </div>
         </div>
       </div>
     </div>
